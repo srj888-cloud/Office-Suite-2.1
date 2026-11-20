@@ -13,7 +13,8 @@
    and in the Mail Merge panel:
      a check of the form's {placeholders} against the sheet's columns,
      Save every row as a draft,
-     Open data sheet / Get from Google Sheet (experimental).
+     Open data sheet (the Google Sheet saved with the template; download it
+     as CSV there and upload it with Mail Merge).
 
    Placeholders match column headers ignoring capital letters
    ({name} = "Name"); spelling and spaces must match. Near misses are
@@ -557,20 +558,6 @@ var OfficeTemplates = (function () {
     );
   }
 
-  // Google Sheet link -> CSV address
-  function csvUrl(url) {
-    url = String(url || "").trim();
-    var gid = (url.match(/[?&#]gid=(\d+)/) || [])[1];
-    var m = url.match(/docs\.google\.com\/spreadsheets\/d\/e\/([\w-]+)\/pub/);
-    if (m) {
-      return "https://docs.google.com/spreadsheets/d/e/" + m[1] + "/pub?output=csv" + (gid ? "&gid=" + gid + "&single=true" : "");
-    }
-    m = url.match(/docs\.google\.com\/spreadsheets\/d\/([\w-]+)/);
-    if (m) return "https://docs.google.com/spreadsheets/d/" + m[1] + "/export?format=csv" + (gid ? "&gid=" + gid : "");
-    if (/^https:\/\/\S+$/.test(url) && (/\.csv(\?|$)/i.test(url) || /output=csv|format=csv/.test(url))) return url;
-    return null;
-  }
-
   function sheetUrlNow() {
     var o = D.getOrigin();
     return o && o.sheetUrl ? o.sheetUrl : "";
@@ -579,60 +566,6 @@ var OfficeTemplates = (function () {
   function openSheet() {
     var url = sheetUrlNow();
     if (url) window.open(url, "_blank", "noopener");
-  }
-
-  // Google only sends sheet data to pages opened from a web address (the
-  // GitHub Pages link or a local web server). A page opened from disk
-  // (file://) has no address, so the browser blocks the request.
-  function openedFromDisk() {
-    return location.protocol === "file:";
-  }
-
-  function fetchSheet() {
-    if (openedFromDisk()) {
-      showToast(
-        "Getting the sheet directly works only in the online version (the GitHub Pages link), not when the app is opened from a file on this computer. " +
-          "Here, use 📊 Open data sheet, then File → Download → CSV, and upload the file.",
-        "error",
-      );
-      return;
-    }
-    var url = sheetUrlNow();
-    if (!url) {
-      url = prompt(
-        "Paste the link of the Google Sheet tab with the data.\n\n" +
-          "Experimental: this works only when the sheet is shared as “Anyone with the link” or published to the web, " +
-          "which makes the data readable by anyone who has the link. For personal data, download the CSV instead.",
-      );
-      if (!url) return;
-      url = url.trim();
-      D.setSheetUrl(url);
-      refreshSheetRow();
-    }
-    var target = csvUrl(url);
-    if (!target) {
-      showToast("That does not look like a Google Sheet link.", "error");
-      return;
-    }
-    showToast("Getting the sheet…");
-    fetch(target, { credentials: "omit" })
-      .then(function (res) {
-        if (!res.ok) throw new Error("status " + res.status);
-        return res.text();
-      })
-      .then(function (text) {
-        if (/^\s*</.test(text)) throw new Error("not CSV");
-        var controls = document.getElementById("mailMergeControls");
-        if (controls) controls.style.display = "flex";
-        parseMergeCSV(text);
-      })
-      .catch(function () {
-        showToast(
-          "Could not read the sheet directly. Check that it is shared as “Anyone with the link” (Share → General access) and that you are online. " +
-            "Otherwise download it as CSV (File → Download → CSV) and upload it.",
-          "error",
-        );
-      });
   }
 
   function refreshSheetRow() {
@@ -653,12 +586,10 @@ var OfficeTemplates = (function () {
     row.id = "sheetRow";
     row.innerHTML =
       '<button type="button" class="btn btn-small" id="sheetOpenBtn" title="Open the data sheet in a new tab, then File → Download → CSV">📊 Open data sheet</button>' +
-      '<button type="button" class="btn btn-small" id="sheetFetchBtn" title="Experimental: needs a sheet shared as Anyone with the link">🔗 Get from Google Sheet (try)</button>' +
       '<small id="sheetHint"></small>';
     var panel = document.getElementById("mergePanel");
     section.insertBefore(row, panel || null);
     document.getElementById("sheetOpenBtn").onclick = openSheet;
-    document.getElementById("sheetFetchBtn").onclick = fetchSheet;
     refreshSheetRow();
   }
 
@@ -676,7 +607,6 @@ var OfficeTemplates = (function () {
   return {
     placeholders: placeholders,
     fillDeep: fillDeep,
-    csvUrl: csvUrl,
     closest: closest,
     afterMergeLoad: afterMergeLoad,
     afterMergeClear: afterMergeClear,

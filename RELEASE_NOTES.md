@@ -7,7 +7,7 @@
 - **📑 Templates** window: Use, Rename / link, Update with current form, Delete, Download templates / Upload templates (to share with colleagues).
 - **Mail merge check**: after uploading the CSV, the app lists any placeholder that has no matching column (with a "did you mean…" hint) and the columns that are not used. Capital letters are ignored (`{name}` = `Name`).
 - **Save every row as a draft**: one finished draft per row of the sheet, named after the row.
-- **📊 Open data sheet** opens the template's Google Sheet; **Get from Google Sheet (try)** reads a sheet shared as "Anyone with the link" directly (experimental).
+- **📊 Open data sheet** opens the template's Google Sheet, ready to download as CSV and upload in Mail Merge.
 - Placeholders are now filled everywhere: also in Excel tables, and in Letter's Copy To and Enclosures in the preview.
 - **Back up drafts & templates**: the backup file now includes templates.
 - Templates saved by older versions are moved over automatically.
