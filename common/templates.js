@@ -581,7 +581,22 @@ var OfficeTemplates = (function () {
     if (url) window.open(url, "_blank", "noopener");
   }
 
+  // Google only sends sheet data to pages opened from a web address (the
+  // GitHub Pages link or a local web server). A page opened from disk
+  // (file://) has no address, so the browser blocks the request.
+  function openedFromDisk() {
+    return location.protocol === "file:";
+  }
+
   function fetchSheet() {
+    if (openedFromDisk()) {
+      showToast(
+        "Getting the sheet directly works only in the online version (the GitHub Pages link), not when the app is opened from a file on this computer. " +
+          "Here, use 📊 Open data sheet, then File → Download → CSV, and upload the file.",
+        "error",
+      );
+      return;
+    }
     var url = sheetUrlNow();
     if (!url) {
       url = prompt(
@@ -613,7 +628,7 @@ var OfficeTemplates = (function () {
       })
       .catch(function () {
         showToast(
-          "Could not read the sheet directly. It must be shared as “Anyone with the link” (or published to the web). " +
+          "Could not read the sheet directly. Check that it is shared as “Anyone with the link” (Share → General access) and that you are online. " +
             "Otherwise download it as CSV (File → Download → CSV) and upload it.",
           "error",
         );
