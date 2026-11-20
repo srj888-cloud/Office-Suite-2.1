@@ -874,6 +874,8 @@ function processMergeData(raw) {
       " row(s) with columns: " +
       headers.join(", "),
   );
+  // placeholder check and "Save every row as a draft" (templates.js)
+  if (window.OfficeTemplates) OfficeTemplates.afterMergeLoad();
 }
 
 function showMergePanel() {
@@ -942,6 +944,7 @@ function clearMergeData() {
   document.getElementById("mergePanel").style.display = "none";
   document.getElementById("mergeClearBtn").style.display = "none";
   document.getElementById("allDraftsBtn").style.display = "none";
+  if (window.OfficeTemplates) OfficeTemplates.afterMergeClear();
   APP.refreshPreview();
 }
 

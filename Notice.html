@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Circular/Notice</title>
-    <link rel="stylesheet" href="common/office.css?v=20261119c" />
+    <link rel="stylesheet" href="common/office.css?v=20261120c" />
     <style>
       :root {
         --primary: #2c3e50;
@@ -938,9 +938,10 @@
       }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="common/office-core.js?v=20261119c"></script>
-    <script src="common/drafts.js?v=20261119c"></script>
-    <script src="common/phrases.js?v=20261119c"></script>
+    <script src="common/office-core.js?v=20261120c"></script>
+    <script src="common/drafts.js?v=20261120c"></script>
+    <script src="common/phrases.js?v=20261120c"></script>
+    <script src="common/templates.js?v=20261120c"></script>
   </head>
 
   <body>
@@ -2734,7 +2735,7 @@
         Object.keys(appData.tables).forEach((tableId) => {
           processedBody = processedBody.replace(
             `{{${tableId}}}`,
-            appData.tables[tableId].html,
+            mergeSubstitute(appData.tables[tableId].html),
           );
         });
 
@@ -2984,7 +2985,7 @@
         Object.keys(appData.tables).forEach((tableId) => {
           processedBody = processedBody.replace(
             `{{${tableId}}}`,
-            appData.tables[tableId].html,
+            mergeSubstitute(appData.tables[tableId].html),
           );
         });
 

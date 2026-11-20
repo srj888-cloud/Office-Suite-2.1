@@ -10,6 +10,11 @@
    app is opened from). Clearing browsing data removes it, so the Drafts
    window offers "Back up all drafts" (one JSON file) and "Restore backup".
 
+   Templates (reusable starting points, saved with Save as template) live
+   in a second store, "templates": { id, app, name, data, sheetUrl,
+   created, updated }. A draft started from a template remembers
+   templateId / templateName / sheetUrl (used by mail merge).
+
    Used by the three apps (auto-save + Drafts window) and by index.html
    (Recent drafts). An app takes part by defining, in its APP settings:
      draftApp             "letter" / "notice" / "proceedings"
@@ -19,7 +24,9 @@
 */
 var OfficeDrafts = (function () {
   var DB_NAME = "officeSuite";
+  var DB_VERSION = 2; // 1: drafts; 2: + templates
   var STORE = "drafts";
+  var TSTORE = "templates";
   var APP_FILES = {
     letter: "Letter Generator.html",
     notice: "Notice.html",
@@ -41,11 +48,20 @@ var OfficeDrafts = (function () {
           reject(new Error("This browser cannot save drafts (no IndexedDB)."));
           return;
         }
-        var req = indexedDB.open(DB_NAME, 1);
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = function () {
-          var store = req.result.createObjectStore(STORE, { keyPath: "id" });
-          store.createIndex("updated", "updated");
-          store.createIndex("app", "app");
+          var db = req.result;
+          // existing drafts are kept; only missing stores are added
+          [STORE, TSTORE].forEach(function (name) {
+            if (!db.objectStoreNames.contains(name)) {
+              var store = db.createObjectStore(name, { keyPath: "id" });
+              store.createIndex("updated", "updated");
+              store.createIndex("app", "app");
+            }
+          });
+        };
+        req.onblocked = function () {
+          reject(new Error("Close the other Office Suite tabs and reload this page to update saved drafts."));
         };
         req.onsuccess = function () {
           resolve(req.result);
@@ -61,11 +77,17 @@ var OfficeDrafts = (function () {
     return dbPromise;
   }
 
-  function run(mode, work) {
+  function run(mode, work, storeName) {
+    storeName = storeName || STORE;
     return openDb().then(function (db) {
+      // another tab upgrading the database closes this connection
+      db.onversionchange = function () {
+        db.close();
+        dbPromise = null;
+      };
       return new Promise(function (resolve, reject) {
-        var tx = db.transaction(STORE, mode);
-        var req = work(tx.objectStore(STORE));
+        var tx = db.transaction(storeName, mode);
+        var req = work(tx.objectStore(storeName));
         tx.oncomplete = function () {
           resolve(req ? req.result : undefined);
         };
@@ -106,6 +128,37 @@ var OfficeDrafts = (function () {
     });
   }
 
+  /* templates: same shape of calls as drafts */
+  function tplGet(id) {
+    return run("readonly", function (s) {
+      return s.get(id);
+    }, TSTORE);
+  }
+  function tplPut(tpl) {
+    return run("readwrite", function (s) {
+      return s.put(tpl);
+    }, TSTORE);
+  }
+  function tplRemove(id) {
+    return run("readwrite", function (s) {
+      return s.delete(id);
+    }, TSTORE);
+  }
+  // by name (A-Z); app is optional
+  function tplList(app) {
+    return run("readonly", function (s) {
+      return s.getAll();
+    }, TSTORE).then(function (all) {
+      return (all || [])
+        .filter(function (d) {
+          return !app || d.app === app;
+        })
+        .sort(function (a, b) {
+          return String(a.name).localeCompare(String(b.name));
+        });
+    });
+  }
+
   function newId() {
     return (
       Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -126,15 +179,20 @@ var OfficeDrafts = (function () {
 
   /* ── backup ── */
   function exportAll() {
-    // resolves to { drafts: n, phrases: n } (zeros when nothing was saved)
-    return list().then(function (drafts) {
+    // resolves to { drafts, templates, phrases } counts (zeros when nothing was saved)
+    return Promise.all([list(), tplList()]).then(function (both) {
+      var drafts = both[0];
+      var templates = both[1];
       var hasPhrases = window.OfficePhrases && OfficePhrases.isCustom();
-      if (!drafts.length && !hasPhrases) return { drafts: 0, phrases: 0 };
+      if (!drafts.length && !templates.length && !hasPhrases) {
+        return { drafts: 0, templates: 0, phrases: 0 };
+      }
       var out = {
         type: "office-suite-drafts",
-        version: 1,
+        version: 2,
         exported: new Date().toISOString(),
         drafts: drafts,
+        templates: templates,
       };
       // the phrase list travels with the drafts (only when it was changed)
       if (window.OfficePhrases && OfficePhrases.isCustom()) {
@@ -152,7 +210,11 @@ var OfficeDrafts = (function () {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      return { drafts: drafts.length, phrases: out.phrases ? out.phrases.length : 0 };
+      return {
+        drafts: drafts.length,
+        templates: templates.length,
+        phrases: out.phrases ? out.phrases.length : 0,
+      };
     });
   }
 
@@ -173,7 +235,7 @@ var OfficeDrafts = (function () {
           reject(new Error("This is not an Office Suite drafts backup file."));
           return;
         }
-        var counts = { added: 0, updated: 0, skipped: 0, phrases: 0 };
+        var counts = { added: 0, updated: 0, skipped: 0, phrases: 0, templates: 0 };
         if (Array.isArray(json.phrases) && window.OfficePhrases) {
           try {
             counts.phrases = OfficePhrases.mergeList(json.phrases);
@@ -181,6 +243,9 @@ var OfficeDrafts = (function () {
         }
         var valid = json.drafts.filter(function (d) {
           return d && d.id && APP_FILES[d.app] && d.data;
+        });
+        var validTemplates = (Array.isArray(json.templates) ? json.templates : []).filter(function (d) {
+          return d && d.id && APP_FILES[d.app] && d.data && d.name;
         });
         Promise.all(
           valid.map(function (d) {
@@ -192,7 +257,15 @@ var OfficeDrafts = (function () {
               counts[have ? "updated" : "added"]++;
               return put(d);
             });
-          }),
+          }).concat(
+            validTemplates.map(function (d) {
+              return tplGet(d.id).then(function (have) {
+                if (have && (have.updated || 0) >= (d.updated || 0)) return;
+                counts.templates++;
+                return tplPut(d);
+              });
+            }),
+          ),
         ).then(function () {
           askPersist();
           resolve(counts);
@@ -231,6 +304,7 @@ var OfficeDrafts = (function () {
 
   /* ── inside an app: auto-save and the Drafts window ── */
   var current = null; // the draft being edited
+  var origin = null; // { templateId, templateName, sheetUrl } when started from a template
   var lastJson = null; // what was last saved (or loaded)
   var timer = null;
   var saving = null;
@@ -246,6 +320,7 @@ var OfficeDrafts = (function () {
     var params = new URLSearchParams(location.search);
     if (id) params.set("draft", id);
     else params.delete("draft");
+    params.delete("template");
     var q = params.toString();
     return location.pathname + (q ? "?" + q : "");
   }
@@ -267,6 +342,13 @@ var OfficeDrafts = (function () {
     var draft = current
       ? Object.assign({}, current)
       : { id: newId(), app: APP.draftApp, created: now };
+    if (!current && origin) {
+      if (origin.templateId) {
+        draft.templateId = origin.templateId;
+        draft.templateName = origin.templateName;
+      }
+      if (origin.sheetUrl) draft.sheetUrl = origin.sheetUrl;
+    }
     draft.title = (APP.draftTitle(data) || "").trim() || "Untitled";
     draft.updated = now;
     draft.data = data;
@@ -336,6 +418,61 @@ var OfficeDrafts = (function () {
     goTo(urlWithDraft(null));
   }
 
+  // Start a new draft from a template (the current draft is saved first)
+  function openTemplate(id) {
+    var url = urlWithDraft(null);
+    goTo(url + (url.indexOf("?") === -1 ? "?" : "&") + "template=" + encodeURIComponent(id));
+  }
+
+  // Which template (and Google Sheet link) this draft came from, if any
+  function getOrigin() {
+    var src = current || origin;
+    if (!src || (!src.templateId && !src.sheetUrl)) return null;
+    return { templateId: src.templateId || "", templateName: src.templateName || "", sheetUrl: src.sheetUrl || "" };
+  }
+
+  // Remember a Google Sheet link for this draft (and the template it came from)
+  function setSheetUrl(url) {
+    if (current) {
+      current.sheetUrl = url;
+      put(current);
+    } else {
+      origin = Object.assign({}, origin || {}, { sheetUrl: url });
+    }
+    var o = getOrigin();
+    if (o && o.templateId) {
+      tplGet(o.templateId).then(function (tpl) {
+        if (tpl && tpl.sheetUrl !== url) {
+          tpl.sheetUrl = url;
+          tplPut(tpl);
+        }
+      });
+    }
+  }
+
+  // Save a separate, finished draft (used by "Save every row as a draft")
+  function saveNew(data, title) {
+    var now = Date.now();
+    var o = getOrigin() || {};
+    var draft = {
+      id: newId(),
+      app: APP.draftApp,
+      created: now,
+      updated: now,
+      title: (title || "").trim() || "Untitled",
+      data: data,
+    };
+    if (o.templateId) {
+      draft.templateId = o.templateId;
+      draft.templateName = o.templateName;
+      draft.sheetUrl = o.sheetUrl;
+    }
+    return put(draft).then(function () {
+      askPersist();
+      return draft;
+    });
+  }
+
   function deleteDraft(id) {
     get(id).then(function (d) {
       if (!d) return;
@@ -385,10 +522,10 @@ var OfficeDrafts = (function () {
         }
         html +=
           '<div class="draft-backup">' +
-          '<button type="button" class="btn btn-small" onclick="OfficeDrafts.backup()">Back up all drafts</button>' +
+          '<button type="button" class="btn btn-small" onclick="OfficeDrafts.backup()">Back up drafts &amp; templates</button>' +
           '<button type="button" class="btn btn-small" onclick="document.getElementById(\'draftRestoreInput\').click()">Restore backup</button>' +
           '<input type="file" id="draftRestoreInput" accept=".json,application/json" hidden onchange="OfficeDrafts.restore(this)">' +
-          '<span class="draft-hint">One file with the drafts of all three apps. Keep a copy before clearing browser data or changing computers.</span>' +
+          '<span class="draft-hint">One file with the drafts, templates and phrases of all three apps. Keep a copy before clearing browser data or changing computers.</span>' +
           "</div>";
         showModal("My Drafts · " + (APP_NAMES[APP.draftApp] || ""), html);
       },
@@ -403,11 +540,15 @@ var OfficeDrafts = (function () {
       .then(exportAll)
       .then(
         function (c) {
-          if (!c.drafts && !c.phrases) {
-            showToast("There are no drafts to back up yet.", "error");
+          if (!c.drafts && !c.templates && !c.phrases) {
+            showToast("There is nothing to back up yet.", "error");
             return;
           }
-          showToast("Backed up " + c.drafts + " draft(s)" + (c.phrases ? " and " + c.phrases + " phrase(s)" : "") + ".");
+          showToast(
+            "Backed up " + c.drafts + " draft(s)" +
+              (c.templates ? ", " + c.templates + " template(s)" : "") +
+              (c.phrases ? " and " + c.phrases + " phrase(s)" : "") + ".",
+          );
         },
         function (err) {
           showToast("Could not back up drafts. " + err.message, "error");
@@ -424,6 +565,7 @@ var OfficeDrafts = (function () {
         showToast(
           "Restored: " + c.added + " new, " + c.updated + " updated" +
             (c.skipped ? ", " + c.skipped + " already up to date" : "") +
+            (c.templates ? ", " + c.templates + " template(s)" : "") +
             (c.phrases ? ", " + c.phrases + " phrase(s) added" : "") + ".",
         );
         if (document.getElementById("draftRestoreInput")) showWindow();
@@ -449,8 +591,25 @@ var OfficeDrafts = (function () {
   function initApp() {
     if (typeof APP === "undefined" || !APP.draftApp) return;
     addBar();
-    var id = new URLSearchParams(location.search).get("draft");
-    var ready = id
+    var params = new URLSearchParams(location.search);
+    var id = params.get("draft");
+    var templateId = !id && params.get("template");
+    var ready = templateId
+      ? tplGet(templateId).then(
+          function (tpl) {
+            if (!tpl || tpl.app !== APP.draftApp) {
+              showToast("That template was not found in this browser.", "error");
+              return;
+            }
+            APP.applyDraftData(tpl.data);
+            origin = { templateId: tpl.id, templateName: tpl.name, sheetUrl: tpl.sheetUrl || "" };
+            setStatus("New draft from “" + tpl.name + "”", "ok");
+          },
+          function (err) {
+            showToast("Saved templates are not available in this browser. " + (err && err.message ? err.message : ""), "error");
+          },
+        )
+      : id
       ? get(id).then(
           function (d) {
             if (!d || d.app !== APP.draftApp) {
@@ -481,13 +640,58 @@ var OfficeDrafts = (function () {
         if (document.visibilityState === "hidden") saveNow();
       });
       window.addEventListener("pagehide", saveNow);
+      // the template bar and mail merge tools (templates.js) start now
+      document.dispatchEvent(new Event("officedrafts:ready"));
     });
+  }
+
+  // Templates saved by older versions in the shared "ml_templates" slot
+  // (Letter and Notice) are moved to the templates store once.
+  function moveOldTemplates() {
+    var old;
+    try {
+      if (localStorage.getItem("ml_templates_moved")) return;
+      old = JSON.parse(localStorage.getItem("ml_templates") || "[]");
+    } catch (e) {
+      return;
+    }
+    if (!Array.isArray(old) || !old.length) {
+      try {
+        localStorage.setItem("ml_templates_moved", "1");
+      } catch (e) {}
+      return;
+    }
+    tplList().then(function (have) {
+      var jobs = [];
+      old.forEach(function (o, i) {
+        if (!o || !o.data || !o.name) return;
+        var d = o.data;
+        var app = d.noticeTitle !== undefined || Array.isArray(d.to) ? "notice" : d.toAddresses !== undefined ? "letter" : null;
+        if (!app) return;
+        var dup = have.some(function (h) {
+          return h.app === app && h.name === o.name;
+        });
+        if (dup) return;
+        var now = Date.now() + i;
+        jobs.push(tplPut({ id: newId(), app: app, name: String(o.name), data: d, sheetUrl: "", created: now, updated: now }));
+      });
+      return Promise.all(jobs).then(function () {
+        return jobs.length;
+      });
+    }).then(function (moved) {
+      try {
+        localStorage.setItem("ml_templates_moved", "1");
+      } catch (e) {}
+      // let open lists (home page cards, template bar) show them
+      if (moved) document.dispatchEvent(new Event("officetemplates:changed"));
+    }, function () {});
   }
 
   // run after each app's own start-up code (window.onload / DOMContentLoaded)
   if (typeof window !== "undefined") {
     window.addEventListener("load", function () {
       setTimeout(initApp, 0);
+      setTimeout(moveOldTemplates, 50);
     });
   }
 
@@ -510,5 +714,15 @@ var OfficeDrafts = (function () {
     deleteDraft: deleteDraft,
     backup: backup,
     restore: restore,
+    // templates
+    tplGet: tplGet,
+    tplPut: tplPut,
+    tplRemove: tplRemove,
+    tplList: tplList,
+    newId: newId,
+    openTemplate: openTemplate,
+    getOrigin: getOrigin,
+    setSheetUrl: setSheetUrl,
+    saveNew: saveNew,
   };
 })();

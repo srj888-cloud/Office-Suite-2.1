@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Proceedings</title>
-    <link rel="stylesheet" href="common/office.css?v=20261119c" />
+    <link rel="stylesheet" href="common/office.css?v=20261120c" />
     <style>
       :root {
         --primary: #2c3e50;
@@ -1690,9 +1690,10 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="common/office-core.js?v=20261119c"></script>
-    <script src="common/drafts.js?v=20261119c"></script>
-    <script src="common/phrases.js?v=20261119c"></script>
+    <script src="common/office-core.js?v=20261120c"></script>
+    <script src="common/drafts.js?v=20261120c"></script>
+    <script src="common/phrases.js?v=20261120c"></script>
+    <script src="common/templates.js?v=20261120c"></script>
     <!-- Address manager dialog -->
     <div
       id="modal"
@@ -2647,7 +2648,7 @@
           const placeholderId = parseInt(idStr);
           const placeholder = tablePlaceholders[placeholderId];
           if (placeholder && placeholder.hasContent) {
-            return placeholder.content;
+            return mergeSubstitute(placeholder.content); // fill {placeholders} in table cells
           }
           return `<div style="background: #fff3cd; border: 2px dashed #ffc107; border-radius: 8px; padding: 20px; margin: 15px 0; text-align: center; color: #856404; font-weight: bold; font-family: mandaram, 'Noto Sans Malayalam', 'Malayalam Sangam MN', serif;">📋 Table ${placeholderId} - Upload Excel file to fill this table</div>`;
         });

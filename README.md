@@ -12,10 +12,11 @@ No installation, no server, no login. Everything runs in your browser and stays 
   - **RTI Profile** — a separate Name of S.P.I.O., From Address, Designation and Appellate Authority for RTI replies (choose **RTI** on the Letter card).
   - **Header & Logo** — upload a logo and/or a full header image, and choose per app: *Text only*, *Logo with text* or *Header image*.
   - **Phrases** — manage the phrase list, **Download phrases** / **Upload phrases** as an Excel CSV file.
-- **Drafts saved automatically** — every draft is saved in the browser as you type. Reopen it from **📂 Drafts** in the app or from **Recent drafts** on the home page. **Back up all drafts** keeps a copy of all drafts and phrases in one file.
+- **Drafts saved automatically** — every draft is saved in the browser as you type. Reopen it from **📂 Drafts** in the app or from **Recent drafts** on the home page. **Back up drafts & templates** keeps a copy of all drafts, templates and phrases in one file.
+- **Templates with placeholders** — write a draft with `{Column name}` placeholders and **💾 Save as template**. **Start from…** (in the app or on the home page card) opens a new draft from it; **📑 Templates** to rename, update, delete, download or upload them.
 - **Phrase suggestions** — type the first few letters of a common office phrase (Malayalam with InScript or any keyboard, or English) and press **Tab** to insert it. **Ctrl+Space** shows all phrases. Select text in a form and click **★ Save as phrase** to add your own.
 - **Tables from Excel** — insert tables from an Excel file, edit cells, split long tables.
-- **Mail merge** — upload an Excel/CSV file to generate one draft per row.
+- **Mail merge** — upload a CSV/Excel file (for example downloaded from Google Sheets) whose column headers match the placeholders. The app checks that every placeholder has a column (and points out near misses), fills them in the preview and the e-Office copy, and **Save every row as a draft** makes one finished draft per row. **📊 Open data sheet** opens the Google Sheet saved with the template; **Get from Google Sheet (try)** reads it directly when the sheet is shared as "Anyone with the link" (that makes the data readable by anyone with the link — for personal data, download the CSV instead).
 - **Print ready** — clean A4 printout.
 - **Private** — no data leaves your computer.
 
@@ -33,11 +34,11 @@ Note: uploading Excel files (tables, mail merge, data sheets) uses the SheetJS l
 
 ## Your data
 
-Profile, drafts and phrases are kept in this browser on this computer. Clearing the browser's data removes them, so use **Back up all drafts** and **Download filled profile** now and then, and before moving to another computer.
+Profile, drafts, templates and phrases are kept in this browser on this computer. Clearing the browser's data removes them, so use **Back up drafts & templates** and **Download filled profile** now and then, and before moving to another computer.
 
 ## For maintainers
 
-- Shared code is in `common/` (`office-core.js`, `drafts.js`, `phrases.js`, `office.css`); each app sets its own details in an `APP` object at the top of its script.
+- Shared code is in `common/` (`office-core.js`, `drafts.js`, `templates.js`, `phrases.js`, `office.css`); each app sets its own details in an `APP` object at the top of its script.
 - The pages link the shared files with a version stamp (`common/office-core.js?v=…`). After changing anything in `common/`, raise that number in all four HTML pages so browsers load the new files.
 - `phrases/starter-phrases.csv` is the starter phrase list (also built into `phrases.js`).
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Letter</title>
-    <link rel="stylesheet" href="common/office.css?v=20261119c" />
+    <link rel="stylesheet" href="common/office.css?v=20261120c" />
     <style>
       :root {
         --primary: #2c3e50;
@@ -842,9 +842,10 @@
       }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="common/office-core.js?v=20261119c"></script>
-    <script src="common/drafts.js?v=20261119c"></script>
-    <script src="common/phrases.js?v=20261119c"></script>
+    <script src="common/office-core.js?v=20261120c"></script>
+    <script src="common/drafts.js?v=20261120c"></script>
+    <script src="common/phrases.js?v=20261120c"></script>
+    <script src="common/templates.js?v=20261120c"></script>
   </head>
 
   <body>
@@ -3129,7 +3130,7 @@
         var copyInputs = document.querySelectorAll(".copy-input");
         for (var i = 0; i < copyInputs.length; i++) {
           if (copyInputs[i].value.trim()) {
-            copyTo.push(copyInputs[i].value.trim());
+            copyTo.push(mergeSubstitute(copyInputs[i].value.trim()));
           }
         }
 
@@ -3137,7 +3138,7 @@
         for (var tableId in data.tables) {
           processedBody = processedBody.replace(
             "{{" + tableId + "}}",
-            data.tables[tableId].html,
+            mergeSubstitute(data.tables[tableId].html),
           );
         }
 
@@ -3224,7 +3225,7 @@
         var enclosureInputs = document.querySelectorAll(".enclosure-input");
         for (var i = 0; i < enclosureInputs.length; i++) {
           if (enclosureInputs[i].value.trim())
-            enclosures.push(enclosureInputs[i].value.trim());
+            enclosures.push(mergeSubstitute(enclosureInputs[i].value.trim()));
         }
         var enclosuresHtml = "";
         if (enclosures.length > 0) {
@@ -3484,7 +3485,7 @@
         for (var tableId in data.tables) {
           processedBody = processedBody.replace(
             "{{" + tableId + "}}",
-            data.tables[tableId].html,
+            mergeSubstitute(data.tables[tableId].html),
           );
         }
 
@@ -3780,7 +3781,7 @@
         for (var tableId in data.tables) {
           processedBody = processedBody.replace(
             "{{" + tableId + "}}",
-            data.tables[tableId].html,
+            mergeSubstitute(data.tables[tableId].html),
           );
         }
 

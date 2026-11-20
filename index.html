@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>e-Office Suite</title>
-    <script src="common/drafts.js?v=20261119c"></script>
-    <script src="common/phrases.js?v=20261119c"></script>
+    <script src="common/drafts.js?v=20261120c"></script>
+    <script src="common/phrases.js?v=20261120c"></script>
     <style>
       :root {
         --primary: #2c3e50;
@@ -710,6 +710,23 @@
         letter-spacing: 0.04em;
       }
 
+
+      /* ── Start from template (app cards) ── */
+      .card-tpl {
+        margin-top: 0.6rem;
+        width: 100%;
+        max-width: 260px;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid #cfd8dc;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #2c3e50;
+        background: white;
+      }
+
+      .card-tpl[hidden] {
+        display: none;
+      }
 
       /* ── Recent drafts ── */
       .recent-drafts {
@@ -1496,6 +1513,13 @@
               onclick="return launchApp('Letter Generator.html');"
               >Open Letter</a
             >
+            <select
+              class="card-tpl"
+              data-app="letter"
+              aria-label="Start a new draft from a template"
+              onchange="startFromTemplate(this)"
+              hidden
+            ></select>
           </div>
         </div>
 
@@ -1512,6 +1536,13 @@
               onclick="return launchApp('Proceedings.html');"
               >Open Proceedings</a
             >
+            <select
+              class="card-tpl"
+              data-app="proceedings"
+              aria-label="Start a new draft from a template"
+              onchange="startFromTemplate(this)"
+              hidden
+            ></select>
           </div>
         </div>
 
@@ -1528,6 +1559,13 @@
               onclick="return launchApp('Notice.html');"
               >Open Notice</a
             >
+            <select
+              class="card-tpl"
+              data-app="notice"
+              aria-label="Start a new draft from a template"
+              onchange="startFromTemplate(this)"
+              hidden
+            ></select>
           </div>
         </div>
       </div>
@@ -1538,7 +1576,7 @@
           <h2 id="recentDraftsTitle">Recent drafts</h2>
           <span class="rd-tools">
             <button type="button" class="btn-sm btn-outline" onclick="backupDrafts()">
-              Back up all drafts
+              Back up drafts &amp; templates
             </button>
             <button
               type="button"
@@ -2723,10 +2761,10 @@
       function backupDrafts() {
         OfficeDrafts.exportAll().then(
           function (c) {
-            var any = c.drafts || c.phrases;
+            var any = c.drafts || c.templates || c.phrases;
             setDraftNote(
               any
-                ? "Backed up " + c.drafts + " draft(s)" + (c.phrases ? " and " + c.phrases + " phrase(s)" : "") + " to a file."
+                ? "Backed up " + c.drafts + " draft(s)" + (c.templates ? ", " + c.templates + " template(s)" : "") + (c.phrases ? " and " + c.phrases + " phrase(s)" : "") + " to a file."
                 : "There are no drafts to back up yet.",
               any ? "ok" : "error",
             );
@@ -2748,6 +2786,7 @@
               setDraftNote(
                 "Restored: " + c.added + " new, " + c.updated + " updated" +
                   (c.skipped ? ", " + c.skipped + " already up to date" : "") +
+                  (c.templates ? ", " + c.templates + " template(s)" : "") +
                   (c.phrases ? ", " + c.phrases + " phrase(s) added" : "") + ".",
                 "ok",
               );
@@ -2759,7 +2798,36 @@
         );
       }
 
-      function launchApp(url, draftId) {
+      // App cards: "Start from template…" lists that app's saved templates
+      function renderCardTemplates() {
+        document.querySelectorAll(".card-tpl").forEach(function (sel) {
+          var app = sel.getAttribute("data-app");
+          OfficeDrafts.tplList(app).then(
+            function (list) {
+              sel.innerHTML =
+                '<option value="">Start from template…</option>' +
+                list
+                  .map(function (t) {
+                    return '<option value="' + OfficeDrafts.esc(t.id) + '">' + OfficeDrafts.esc(t.name) + "</option>";
+                  })
+                  .join("");
+              sel.hidden = !list.length;
+            },
+            function () {
+              sel.hidden = true;
+            },
+          );
+        });
+      }
+
+      function startFromTemplate(sel) {
+        var id = sel.value;
+        var app = sel.getAttribute("data-app");
+        sel.value = "";
+        if (id) launchApp(OfficeDrafts.APP_FILES[app], null, id);
+      }
+
+      function launchApp(url, draftId, templateId) {
         if (
           profileDirty &&
           !confirm(
@@ -2780,6 +2848,7 @@
           } catch (e) {}
         }
         if (draftId) params.push("draft=" + encodeURIComponent(draftId));
+        else if (templateId) params.push("template=" + encodeURIComponent(templateId));
         // Tells the Letter app to show its "RTI only" section.
         if (RTI_APPS.indexOf(url) !== -1 && getActiveProfile() === "rti") {
           params.push("mode=rti");
@@ -2812,7 +2881,9 @@
       window.addEventListener("pageshow", function () {
         skipUnloadPrompt = false;
         renderRecentDrafts(); // also when coming back with the Back button
+        renderCardTemplates();
       });
+      document.addEventListener("officetemplates:changed", renderCardTemplates);
       idxInitHeaderSettings();
     </script>
   </body>
