@@ -1,6 +1,6 @@
 /* Office Suite - drafts saved in this browser.
 
-   Drafts are kept in the browser's IndexedDB database "officeSuite"
+   Drafts are kept in the browser's IndexedDB database "officeSuite21"
    (store "drafts"), so no export/import is needed day to day. A draft is
    the same data the app's own JSON export holds, plus a title and times:
      { id, app: "letter" | "notice" | "proceedings", title,
@@ -23,8 +23,12 @@
      draftTitle(data)     -> short title for the list
 */
 var OfficeDrafts = (function () {
-  var DB_NAME = "officeSuite";
-  var DB_VERSION = 2; // 1: drafts; 2: + templates
+  // Version 2.1 keeps its own database. The live 2.0 site (same web
+  // address, so the same browser storage) uses "officeSuite" at version 1
+  // and cannot open it once it is upgraded; see migrateFromOld().
+  var DB_NAME = "officeSuite21";
+  var DB_VERSION = 1; // drafts + templates
+  var OLD_DB = "officeSuite"; // version 2.0's drafts
   var STORE = "drafts";
   var TSTORE = "templates";
   var APP_FILES = {
@@ -48,8 +52,10 @@ var OfficeDrafts = (function () {
           reject(new Error("This browser cannot save drafts (no IndexedDB)."));
           return;
         }
+        var created = false;
         var req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = function () {
+        req.onupgradeneeded = function (e) {
+          created = e.oldVersion === 0;
           var db = req.result;
           // existing drafts are kept; only missing stores are added
           [STORE, TSTORE].forEach(function (name) {
@@ -64,7 +70,20 @@ var OfficeDrafts = (function () {
           reject(new Error("Close the other Office Suite tabs and reload this page to update saved drafts."));
         };
         req.onsuccess = function () {
-          resolve(req.result);
+          var db = req.result;
+          if (!created) {
+            resolve(db);
+            return;
+          }
+          // first start of 2.1 in this browser: bring over the 2.0 drafts
+          migrateFromOld(db).then(
+            function () {
+              resolve(db);
+            },
+            function () {
+              resolve(db);
+            },
+          );
         };
         req.onerror = function () {
           reject(req.error);
@@ -75,6 +94,106 @@ var OfficeDrafts = (function () {
       });
     }
     return dbPromise;
+  }
+
+  /* ── version 2.0's drafts ──
+     On the first start of 2.1 in a browser, its drafts (and any templates
+     an earlier 2.1 test put there) are copied into this database. If an
+     earlier 2.1 had upgraded the 2.0 database to version 2 (which 2.0 can
+     no longer open), it is rebuilt at version 1 with its drafts, so the
+     2.0 site works again. The 2.0 data is otherwise left untouched. */
+  function rawOpen(name, version, upgrade) {
+    return new Promise(function (resolve, reject) {
+      var q = version ? indexedDB.open(name, version) : indexedDB.open(name);
+      q.onupgradeneeded = function () {
+        if (upgrade) upgrade(q.result);
+      };
+      q.onsuccess = function () {
+        resolve(q.result);
+      };
+      q.onerror = function () {
+        reject(q.error);
+      };
+    });
+  }
+  function readAll(db, store) {
+    return new Promise(function (resolve) {
+      if (!db.objectStoreNames.contains(store)) {
+        resolve([]);
+        return;
+      }
+      var r = db.transaction(store, "readonly").objectStore(store).getAll();
+      r.onsuccess = function () {
+        resolve(r.result || []);
+      };
+      r.onerror = function () {
+        resolve([]);
+      };
+    });
+  }
+  function putAll(db, store, items) {
+    return new Promise(function (resolve) {
+      if (!items.length) {
+        resolve();
+        return;
+      }
+      var tx = db.transaction(store, "readwrite");
+      var s = tx.objectStore(store);
+      items.forEach(function (i) {
+        s.put(i);
+      });
+      tx.oncomplete = tx.onerror = tx.onabort = function () {
+        resolve();
+      };
+    });
+  }
+  function oldDbVersion() {
+    // only look at the 2.0 database if it exists (opening it would create it)
+    if (!indexedDB.databases) return Promise.resolve(0);
+    return indexedDB.databases().then(
+      function (list) {
+        var d = (list || []).filter(function (x) {
+          return x.name === OLD_DB;
+        })[0];
+        return d ? d.version || 0 : 0;
+      },
+      function () {
+        return 0;
+      },
+    );
+  }
+  function migrateFromOld(newDb) {
+    return oldDbVersion().then(function (v) {
+      if (!v) return;
+      return rawOpen(OLD_DB).then(function (old) {
+        return Promise.all([readAll(old, STORE), readAll(old, TSTORE)]).then(function (both) {
+          old.close();
+          var drafts = both[0];
+          return putAll(newDb, STORE, drafts)
+            .then(function () {
+              return putAll(newDb, TSTORE, both[1]);
+            })
+            .then(function () {
+              // repair in the background; a 2.0 tab left open only delays it
+              if (v >= 2) restoreOldDb(drafts);
+            });
+        });
+      });
+    });
+  }
+  function restoreOldDb(drafts) {
+    var del = indexedDB.deleteDatabase(OLD_DB);
+    del.onsuccess = function () {
+      rawOpen(OLD_DB, 1, function (db) {
+        var s = db.createObjectStore(STORE, { keyPath: "id" });
+        s.createIndex("updated", "updated");
+        s.createIndex("app", "app");
+      }).then(function (db) {
+        return putAll(db, STORE, drafts).then(function () {
+          db.close();
+        });
+      }, function () {});
+    };
   }
 
   function run(mode, work, storeName) {
