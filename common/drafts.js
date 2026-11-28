@@ -73,6 +73,9 @@ var OfficeDrafts = (function () {
           var db = req.result;
           if (!created) {
             resolve(db);
+            // every start: if the 2.0 database was upgraded again (for
+            // example by an old cached copy of 2.1), repair it
+            repairOldIfBroken(db);
             return;
           }
           // first start of 2.1 in this browser: bring over the 2.0 drafts
@@ -181,6 +184,38 @@ var OfficeDrafts = (function () {
       });
     });
   }
+  // Later starts: only when the 2.0 database is at version 2 (which 2.0
+  // cannot open). Anything in it that 2.1 does not have yet (or has an
+  // older copy of) is kept here, then the 2.0 database is rebuilt.
+  function repairOldIfBroken(newDb) {
+    oldDbVersion().then(function (v) {
+      if (v < 2) return;
+      return rawOpen(OLD_DB).then(function (old) {
+        return Promise.all([readAll(old, STORE), readAll(old, TSTORE)]).then(function (both) {
+          old.close();
+          return Promise.all([readAll(newDb, STORE), readAll(newDb, TSTORE)]).then(function (mine) {
+            function newer(items, have) {
+              var byId = {};
+              have.forEach(function (h) {
+                byId[h.id] = h;
+              });
+              return items.filter(function (i) {
+                return !byId[i.id] || (i.updated || 0) > (byId[i.id].updated || 0);
+              });
+            }
+            return putAll(newDb, STORE, newer(both[0], mine[0]))
+              .then(function () {
+                return putAll(newDb, TSTORE, newer(both[1], mine[1]));
+              })
+              .then(function () {
+                restoreOldDb(both[0]);
+              });
+          });
+        });
+      });
+    }).catch(function () {});
+  }
+
   function restoreOldDb(drafts) {
     var del = indexedDB.deleteDatabase(OLD_DB);
     del.onsuccess = function () {
